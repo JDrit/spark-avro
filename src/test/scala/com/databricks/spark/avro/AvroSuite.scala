@@ -24,6 +24,9 @@ class AvroSuite extends FunSuite {
   test("format shortcut") {
     val df = TestSQLContext.read.format("avro").load(episodesFile)
     assert(df.count() === 8)
+
+    val df1 = TestSQLContext.read.format("com.databricks.spark.avro").load(episodesFile)
+    assert(df1.count() === 8)
   }
 
   test("request no fields") {
