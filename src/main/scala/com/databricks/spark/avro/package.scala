@@ -15,9 +15,10 @@
  */
 package com.databricks.spark
 
-import org.apache.spark.sql.{SQLContext, DataFrameReader, DataFrameWriter, DataFrame}
+import org.apache.spark.sql._
 
 package object avro {
+  private final val sourceName = "com.databricks.spark.avro"
 
   /**
    * Adds a method, `avroFile`, to SQLContext that allows reading data stored in Avro.
@@ -34,7 +35,7 @@ package object avro {
    * the DataFileWriter
    */
   implicit class AvroDataFrameWriter(writer: DataFrameWriter) {
-    def avro: String => Unit = writer.format("com.databricks.spark.avro").save
+    def avro: String => Unit = writer.format(sourceName).save
   }
 
   /**
@@ -42,6 +43,6 @@ package object avro {
    * the DataFileReade
    */
   implicit class AvroDataFrameReader(reader: DataFrameReader) {
-    def avro: String => DataFrame = reader.format("com.databricks.spark.avro").load
+    def avro: String => DataFrame = reader.format(sourceName).load
   }
 }

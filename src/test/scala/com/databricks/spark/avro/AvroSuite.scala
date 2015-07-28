@@ -21,6 +21,11 @@ class AvroSuite extends FunSuite {
   val episodesFile = "src/test/resources/episodes.avro"
   val testFile = "src/test/resources/test.avro"
 
+  test("format shortcut") {
+    val df = TestSQLContext.read.format("avro").load(episodesFile)
+    assert(df.count() === 8)
+  }
+
   test("request no fields") {
     val df = TestSQLContext.read.avro(episodesFile)
     df.registerTempTable("avro_table")
