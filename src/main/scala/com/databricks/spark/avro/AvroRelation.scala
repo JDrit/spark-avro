@@ -19,12 +19,15 @@ package com.databricks.spark.avro
 import java.io.FileNotFoundException
 import java.util.zip.Deflater
 
+import org.apache.avro.Schema.Parser
+import org.apache.avro.reflect.AvroSchema
+
 import scala.collection.Iterator
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 
 import com.google.common.base.Objects
-import org.apache.avro.SchemaBuilder
+import org.apache.avro.{SchemaParseException, Schema, SchemaBuilder}
 import org.apache.avro.file.{DataFileConstants, DataFileReader, FileReader}
 import org.apache.avro.generic.{GenericDatumReader, GenericRecord}
 import org.apache.avro.mapred.{AvroOutputFormat, FsInput}
@@ -36,6 +39,8 @@ import org.apache.spark.rdd.{RDD, UnionRDD}
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Row, SQLContext}
+
+import scala.util.Try
 
 abstract class AvroRelationException(msg: String) extends Exception(msg)
 case object NoFilesException extends AvroRelationException("no input files given")
@@ -55,9 +60,18 @@ private[avro] class AvroRelation(
   private val recordNamespace = parameters.getOrElse("recordNamespace", "")
 
   /** needs to be lazy so it is not evaluated when saving since no schema exists at that location */
-  private lazy val avroSchema = paths match {
-    case Array(head, _*) => newReader(head)(_.getSchema)
-    case Array() => throw NoFilesException
+  private lazy val avroSchema = try {
+      parameters.get("schema") match {
+        case Some(schema) => new Parser().parse(schema)
+        case None => paths match {
+          case Array(head, _*) => newReader(head)(_.getSchema)
+          case Array() => throw NoFilesException
+        }
+      }
+  } catch {
+    case ex: SchemaParseException =>
+      logError("Could not parse given schema when reading data in")
+      throw ex
   }
 
   /**
@@ -84,7 +98,16 @@ private[avro] class AvroRelation(
    */
   override def prepareJobForWrite(job: Job): OutputWriterFactory = {
     val build = SchemaBuilder.record(recordName).namespace(recordNamespace)
-    val outputAvroSchema = SchemaConverters.convertStructToAvro(dataSchema, build, recordNamespace)
+    val outputAvroSchema = parameters.get("schema") match {
+      case Some(schema) => try {
+        new Parser().parse(schema)
+      } catch {
+        case ex: SchemaParseException =>
+          logError("could not parse given schema when writing data out")
+          throw ex
+      }
+      case None => SchemaConverters.convertStructToAvro(dataSchema, build, recordNamespace)
+    }
     AvroJob.setOutputKeySchema(job, outputAvroSchema)
     val AVRO_COMPRESSION_CODEC = "spark.sql.avro.compression.codec"
     val AVRO_DEFLATE_LEVEL = "spark.sql.avro.deflate.level"

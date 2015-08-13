@@ -1,15 +1,18 @@
 package com.databricks.spark.avro
 
-import java.io.File
+import java.io.{StringWriter, FileInputStream, InputStream, File}
 import java.nio.ByteBuffer
 import java.sql.Timestamp
+
+import org.apache.avro.io.DatumReader
+import org.apache.commons.io.IOUtils
 
 import scala.collection.JavaConversions._
 
 import org.apache.avro.Schema
-import org.apache.avro.Schema.{Type, Field}
-import org.apache.avro.file.DataFileWriter
-import org.apache.avro.generic.{GenericData, GenericRecord, GenericDatumWriter}
+import org.apache.avro.Schema.{Parser, Type, Field}
+import org.apache.avro.file.{DataFileStream, DataFileReader, DataFileWriter}
+import org.apache.avro.generic.{GenericDatumReader, GenericData, GenericRecord, GenericDatumWriter}
 import org.apache.commons.io.FileUtils
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.test.TestSQLContext
@@ -20,6 +23,45 @@ import org.scalatest.FunSuite
 class AvroSuite extends FunSuite {
   val episodesFile = "src/test/resources/episodes.avro"
   val testFile = "src/test/resources/test.avro"
+
+  test("Writes out with given schema") {
+    val schema =
+      """
+        |{
+        |  "type" : "record",
+        |  "name" : "episodes",
+        |  "namespace" : "testing.hive.avro.serde",
+        |  "fields" : [ {
+        |    "name" : "title",
+        |    "type" : "string",
+        |    "doc" : "episode title"
+        |  }, {
+        |    "name" : "air_date",
+        |    "type" : "string",
+        |    "doc" : "initial date"
+        |  }, {
+        |    "name" : "doctor",
+        |    "type" : "int",
+        |    "doc" : "main actor playing the Doctor in episode"
+        |  } ]
+        |}
+        |
+      """.stripMargin
+    val givenSchema = new Parser().parse(schema)
+
+    TestUtils.withTempDir { dir =>
+      val testDir = s"$dir/avro-out"
+      val df = TestSQLContext.read.avro(episodesFile)
+      df.write.option("schema", schema).avro(testDir)
+
+      val file = new File(testDir).listFiles().filter(f => f.getName.endsWith(".avro"))(0)
+      val in: InputStream = new FileInputStream(file)
+      val datumReader = new GenericDatumReader[GenericRecord]()
+      val inputSchema = new DataFileStream[GenericRecord](in, datumReader).getSchema
+
+      assert(givenSchema === inputSchema)
+    }
+  }
 
   test("request no fields") {
     val df = TestSQLContext.read.avro(episodesFile)
