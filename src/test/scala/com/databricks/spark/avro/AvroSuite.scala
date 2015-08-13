@@ -1,20 +1,18 @@
 package com.databricks.spark.avro
 
-import java.io.{StringWriter, FileInputStream, InputStream, File}
+import java.io.{FileInputStream, InputStream, File}
 import java.nio.ByteBuffer
 import java.sql.Timestamp
-
-import org.apache.avro.io.DatumReader
-import org.apache.commons.io.IOUtils
 
 import scala.collection.JavaConversions._
 
 import org.apache.avro.Schema
 import org.apache.avro.Schema.{Parser, Type, Field}
-import org.apache.avro.file.{DataFileStream, DataFileReader, DataFileWriter}
+import org.apache.avro.file.{DataFileStream, DataFileWriter}
 import org.apache.avro.generic.{GenericDatumReader, GenericData, GenericRecord, GenericDatumWriter}
 import org.apache.commons.io.FileUtils
 import org.apache.spark.sql.Row
+import org.apache.spark.SparkException
 import org.apache.spark.sql.test.TestSQLContext
 import org.apache.spark.sql.test.TestSQLContext._
 import org.apache.spark.sql.types._
@@ -61,6 +59,45 @@ class AvroSuite extends FunSuite {
 
       assert(givenSchema === inputSchema)
     }
+  }
+
+  test("Writing with incorrect schema") {
+    val schema =
+      """
+        |{
+        |  "type" : "record",
+        |  "name" : "episodes",
+        |  "namespace" : "testing.hive.avro.serde",
+        |  "fields" : [ {
+        |    "name" : "title",
+        |    "type" : "string",
+        |    "doc" : "episode title"
+        |  }, {
+        |    "name" : "air_date",
+        |    "type" : "string",
+        |    "doc" : "initial date"
+        |  }, {
+        |    "name" : "doctor",
+        |    "type" : "int",
+        |    "doc" : "main actor playing the Doctor in episode"
+        |  } ]
+        |}
+        |
+      """.stripMargin
+    import TestSQLContext.implicits._
+
+    TestUtils.withTempDir { dir =>
+      val out = s"$dir/avro"
+      intercept[SparkException] {
+        val df = Seq(("batman", null, 2), ("fhjdslk", "random str", 23)).toDF("title", "air_date", "doctor")
+        df.write.option("schema", schema).avro(s"$out/1")
+      }
+      intercept[UnsupportedOperationException] {
+        val df = Seq(("batman", "fds", 2.33), ("fhjdslk", "random str", 23)).toDF("title", "air_date", "doctor")
+        df.write.option("schema", schema).avro(s"$out/2")
+      }
+    }
+
   }
 
   test("request no fields") {

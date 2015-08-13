@@ -62,7 +62,9 @@ private[avro] class AvroRelation(
   /** needs to be lazy so it is not evaluated when saving since no schema exists at that location */
   private lazy val avroSchema = try {
       parameters.get("schema") match {
-        case Some(schema) => new Parser().parse(schema)
+        case Some(schema) =>
+          logInfo(s"using supplied schema $schema")
+          new Parser().parse(schema)
         case None => paths match {
           case Array(head, _*) => newReader(head)(_.getSchema)
           case Array() => throw NoFilesException
@@ -100,6 +102,7 @@ private[avro] class AvroRelation(
     val build = SchemaBuilder.record(recordName).namespace(recordNamespace)
     val outputAvroSchema = parameters.get("schema") match {
       case Some(schema) => try {
+        logInfo(s"using supplied schema $schema")
         new Parser().parse(schema)
       } catch {
         case ex: SchemaParseException =>
